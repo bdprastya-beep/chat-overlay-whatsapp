@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Style Chat Overlay</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;500;600&display=swap');
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: transparent;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .message-container {
+            position: relative;
+            margin-bottom: 8px;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 0 12px;
+        }
+
+        .message-container.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        .message-container.removing {
+            opacity: 0;
+            transform: translateY(-20px);
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+        
+        .badges:empty, span:empty, .text:empty, .donation:empty {
+            display: none;
+        }
+
+        .emoji-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #25D366, #20B954);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+            margin-top: 2px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .chat-bubble {
+            background: #DCF8C6;
+            border-radius: 7.5px;
+            padding: 6px 7px 8px 9px;
+            max-width: 280px;
+            min-width: 60px;
+            position: relative;
+            box-shadow: 0 1px 0.5px rgba(0, 0, 0, 0.13);
+            word-wrap: break-word;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .chat-bubble::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -7px;
+            width: 0;
+            height: 0;
+            border-style: solid;
+            border-width: 0 7px 7px 0;
+            border-color: transparent #DCF8C6 transparent transparent;
+        }
+
+        .username {
+            font-weight: 500;
+            font-size: 12.8px;
+            color: #00796B;
+            margin-bottom: 2px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .badges {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .badge {
+            height: 14px;
+            vertical-align: middle;
+            border-radius: 2px;
+        }
+
+        .text {
+            font-size: 14.2px;
+            line-height: 1.3;
+            color: #303030;
+            word-break: break-word;
+            margin-bottom: 2px;
+        }
+
+        .donation {
+            background: #FFF3C4;
+            border: 1px solid #FFD54F;
+            border-radius: 8px;
+            padding: 8px 10px;
+            margin-top: 4px;
+            font-size: 13px;
+            color: #F57F17;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .donation::before {
+            content: '💰';
+            font-size: 16px;
+        }
+
+        .timestamp {
+            font-size: 11px;
+            color: #667781;
+            text-align: right;
+            margin-top: 2px;
+            opacity: 0.8;
+        }
+
+        .badges svg, .badges img, .text svg, .text img {
+            max-width: 48px;
+            max-height: 18px;
+            border-radius: 2px;
+        }
+        
+        #chat-container {
+            padding: 12px 0;
+            max-width: 380px;
+            margin: auto;
+            max-height: 100vh;
+            overflow-y: auto;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        #chat-container::-webkit-scrollbar {
+            display: none;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: scale(0.95) translateY(5px);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1) translateY(0);
+            }
+        }
+
+        /* Avatar styling if present */
+        .avatar-wrapper {
+            display: none; /* Hidden as we use emoji instead */
+        }
+
+        /* Different bubble colors for variety */
+        .message-container:nth-child(odd) .chat-bubble {
+            background: #E3F2FD;
+        }
+
+        .message-container:nth-child(odd) .chat-bubble::before {
+            border-color: transparent #E3F2FD transparent transparent;
+        }
+
+        .message-container:nth-child(even) .emoji-icon {
+            background: linear-gradient(135deg, #42A5F5, #1E88E5);
+        }
+
+        /* Special styling for donations */
+        .message-container.has-donation .chat-bubble {
+            background: #FFF8E1;
+            border: 1px solid #FFE082;
+        }
+
+        .message-container.has-donation .chat-bubble::before {
+            border-color: transparent #FFF8E1 transparent transparent;
+        }
+
+        /* Override original styling that might conflict */
+        .username-box {
+            display: none;
+        }
+
+        .message {
+            display: block;
+            max-height: none;
+            background: none;
+            padding: 0;
+            margin: 0;
+            border-radius: 0;
+            color: inherit;
+            position: static;
+            word-wrap: normal;
+        }
+    </style>
+</head>
+<body>
+    <div id="chat-container"></div>
+
+    <script>
+    // Parameters for Social Stream Ninja
+    var urlParams = new URLSearchParams(window.location.search);
+    var roomID = urlParams.get("session") || "w6nrvQvdAvJx"; // Use session from URL or default
+
+    var password = "false"; // Set password if needed
+    var featuredMode = false; // Set to true if you only want to display featured messages
+
+    const chatContainer = document.getElementById('chat-container');
+
+    // Array of emoji options for users
+    const emojiOptions = ['😀', '😊', '🥰', '😎', '🤗', '🙂', '😇', '🤔', '😴', '🤓', '🥳', '🤩', '😋', '🙃', '😌', '🤠', '🥺', '😍', '🤪', '😜'];
+
+    // Store user emojis to maintain consistency
+    const userEmojis = {};
+
+    function getUserEmoji(username) {
+        if (!userEmojis[username]) {
+            // Generate a consistent emoji based on username
+            let hash = 0;
+            for (let i = 0; i < username.length; i++) {
+                const char = username.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash; // Convert to 32bit integer
+            }
+            const index = Math.abs(hash) % emojiOptions.length;
+            userEmojis[username] = emojiOptions[index];
+        }
+        return userEmojis[username];
+    }
+
+    function getCurrentTime() {
+        const now = new Date();
+        return now.toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+    }
+
+    function addMessageToOverlay(data) {
+        console.log('Adding message:', data); // Debug log
+        
+        const messageContainer = document.createElement('div');
+        messageContainer.classList.add('message-container');
+        
+        if (data.donation || data.hasDonation) {
+            messageContainer.classList.add('has-donation');
+        }
+
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message');
+        if (data.mid) messageDiv.id = data.mid;
+
+        let chatbadges = "";
+        if (data.chatbadges && data.chatbadges.length > 0) {
+            data.chatbadges.slice(0, 3).forEach(badge => {
+                if (typeof badge === "object") {
+                    if (badge.type === "img" && badge.src) {
+                        chatbadges += `<img class='badge' src='${badge.src}' alt='badge' />`;
+                    } else if (badge.type === "svg" && badge.html) {
+                        chatbadges += `<span class='badge svg'>${badge.html}</span>`;
+                    }
+                } else if (typeof badge === "string") {
+                    chatbadges += `<img class='badge' src='${badge}' alt='badge' />`;
+                }
+            });
+        }
+
+        const userEmoji = getUserEmoji(data.chatname || 'Anonymous');
+        const currentTime = getCurrentTime();
+
+        messageContainer.innerHTML = `
+            <div class="emoji-icon">${userEmoji}</div>
+            <div class="chat-bubble">
+                <div class="username">
+                    <span>${data.chatname || 'Anonymous'}</span>
+                    ${chatbadges ? `<span class="badges">${chatbadges}</span>` : ''}
+                </div>
+                <div class="text">${data.chatmessage || ''}</div>
+                ${(data.donation || data.hasDonation) ? `<div class="donation">${(data.donation || data.hasDonation)}</div>` : ''}
+                <div class="timestamp">${currentTime}</div>
+            </div>
+        `;
+
+        const isAtBottom = chatContainer.scrollHeight - chatContainer.scrollTop <= chatContainer.clientHeight + 50;
+        chatContainer.appendChild(messageContainer);
+
+        // Force reflow to ensure the transition works
+        messageContainer.offsetHeight;
+        
+        // Add visible class after a short delay to trigger the transition
+        requestAnimationFrame(() => {
+            messageContainer.classList.add('visible');
+        });
+
+        if (isAtBottom) {
+            setTimeout(() => {
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }, 100);
+        }
+
+        // Handle removal after 15 seconds
+        setTimeout(() => {
+            messageContainer.classList.add('removing');
+            
+            // Remove from DOM after transition completes
+            setTimeout(() => {
+                if (messageContainer.parentNode) {
+                    messageContainer.parentNode.removeChild(messageContainer);
+                }
+            }, 500); // Match the transition duration
+        }, 15000);
+    }
+
+    // Initialize iframe for Social Stream Ninja
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('Initializing with room:', roomID); // Debug log
+        
+        const iframe = document.createElement("iframe");
+        iframe.src = featuredMode
+            ? `https://vdo.socialstream.ninja/?ln&password=${password}&salt=vdo.ninja&label=overlay&exclude=${roomID}&scene&novideo&noaudio&cleanoutput&room=${roomID}`
+            : `https://vdo.socialstream.ninja/?ln&salt=vdo.ninja&password=${password}&push&label=dock&vd=0&ad=0&novideo&noaudio&autostart&cleanoutput&room=${roomID}`;
+
+        // Hide the iframe (it's just for listening to chat)
+        iframe.style.cssText = "width: 0px; height: 0px; position: fixed; left: -100px; top: -100px;";
+        document.body.appendChild(iframe);
+
+        // Listen for incoming chat messages from Social Stream Ninja
+        window.addEventListener("message", (event) => {
+            if (event.source !== iframe.contentWindow) return;
+            if (event.data.dataReceived && event.data.dataReceived.overlayNinja) {
+                addMessageToOverlay(event.data.dataReceived.overlayNinja);
+            }
+        });
+
+        // Add test message after 3 seconds (remove in production)
+        setTimeout(() => {
+            addMessageToOverlay({
+                chatname: "TestUser",
+                chatmessage: "Hello! This is a WhatsApp style test message 🎉",
+                chatbadges: [],
+                donation: null
+            });
+        }, 3000);
+    });
+    
+    // WebSocket mode as alternative
+    var conCon = 1;
+    var socketserver = false;
+    var serverURL = urlParams.has("localserver") ? "ws://127.0.0.1:3000" : "wss://io.socialstream.ninja";
+
+    function setupSocket(){
+        socketserver.onclose = function (){
+            setTimeout(function(){
+                conCon+=1;
+                socketserver = new WebSocket(serverURL);
+                setupSocket();
+            },100*conCon);
+        };
+        socketserver.onopen = function (){
+            conCon = 1;
+            socketserver.send(JSON.stringify({"join":roomID, "out":3, "in":4}));
+        };
+        socketserver.addEventListener('message', function (event) {
+            if (event.data){
+                try {
+                    var data = JSON.parse(event.data);
+                    if (data.chatname || data.chatmessage) { // Basic validation
+                        addMessageToOverlay(data);
+                    }
+                    if (data.get){
+                        var ret = {};
+                        ret.callback = {};
+                        ret.callback.get = data.get;
+                        ret.callback.result = true;
+                        socketserver.send(JSON.stringify(ret));
+                    }
+                } catch(e) {
+                    console.error('Error parsing WebSocket message:', e);
+                }
+            }
+        });
+    }
+    
+    if (urlParams.has("server") || urlParams.has("server2")){
+        serverURL = urlParams.get("server") || urlParams.get("server2") || serverURL;
+        socketserver = new WebSocket(serverURL);
+        setupSocket();
+    }
+</script>
+</body>
+</html>
